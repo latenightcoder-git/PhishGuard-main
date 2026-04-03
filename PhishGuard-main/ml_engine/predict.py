@@ -1,19 +1,26 @@
 import joblib
 import json
 from feature_extractor import extract, to_vector, FEATURES
+import pandas as pd
 
-clf = joblib.load("F:/PhishGuard/artifacts/model.pkl")
+clf = joblib.load("../artifacts/model.pkl")
 
-with open("F:/PhishGuard/artifacts/feature_importance.json") as f:
+with open("../artifacts/feature_importance.json") as f:
     importance = json.load(f)
 
-THRESHOLDS = {"safe": 30, "suspicious": 70}
+THRESHOLDS = {"safe": 20, "suspicious": 35}
+
+# print(clf.feature_names_in_)
 
 def predict(url: str) -> dict:
     features = extract(url)
-    vector   = [to_vector(features)]
 
-    proba      = clf.predict_proba(vector)[0]
+    vector = pd.DataFrame(
+    [[features[f] for f in clf.feature_names_in_]],
+    columns=clf.feature_names_in_
+    )
+
+    proba = clf.predict_proba(vector)[0]
     phish_prob = round(proba[1] * 100)
 
     if phish_prob < THRESHOLDS["safe"]:
@@ -24,10 +31,10 @@ def predict(url: str) -> dict:
         label = "phishing"
 
     return {
-        "label":       label,
-        "score":       phish_prob,
-        "confidence":  phish_prob if label == "phishing" else 100 - phish_prob,
-        "features":    features,
+        "label": label,
+        "score": phish_prob,
+        "confidence": phish_prob if label == "phishing" else 100 - phish_prob,
+        "features": features,
         "explanation": build_explanation(features, label),
     }
 
@@ -36,22 +43,35 @@ def build_explanation(features: dict, label: str) -> str:
         return "No significant phishing signals detected."
 
     reasons = []
-    if not features["has_https"]:
+    if features["has_https"] == -1:
         reasons.append("uses HTTP instead of HTTPS")
-    if features["domain_age_days"] < 30:
-        reasons.append(f"domain is only {features['domain_age_days']} days old")
-    if features["subdomain_count"] > 2:
-        reasons.append(f"has {features['subdomain_count']} subdomains")
-    if features["url_length"] > 75:
+    if features["domain_age_days"] == -1:
+        reasons.append("domain was registered recently")
+    if features["subdomain_count"] == -1:
+        reasons.append("has multiple subdomains")
+    if features["url_length"] == -1:
         reasons.append("URL is unusually long")
-    if features["has_at_symbol"]:
+    if features["has_at_symbol"] == -1:
         reasons.append("contains @ symbol")
-    if features["has_ip_in_url"]:
+    if features["has_ip_in_url"] == -1:
         reasons.append("uses IP address instead of domain name")
-    if features["hyphen_count"] > 2:
-        reasons.append(f"domain has {features['hyphen_count']} hyphens")
+    if features["hyphen_count"] == -1:
+        reasons.append("domain contains hyphens")
+    if features["suspicious_tld"] == -1:
+        reasons.append("uses a suspicious top-level domain")
+    if features["domain_has_keywords"] == -1:
+        reasons.append("domain contains phishing-related keywords")
 
     if not reasons:
         return "Multiple weak phishing signals detected."
 
     return "Flagged because: " + ", ".join(reasons) + "."
+
+
+
+
+
+
+
+
+
